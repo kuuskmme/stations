@@ -4,9 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"stations/config"
-	"stations/src/antfarm"
-	"stations/src/paths"
+	"stations/paths"
+	"stations/stations"
 	"strconv"
 	"strings"
 )
@@ -19,17 +18,19 @@ func FileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-func ReadData(filename string, startStation string, endStation string, numTrains int) (*antfarm.Graph, error) {
+func ReadData(filename string, startStation string, endStation string, numTrains int) *stations.Graph {
 	if !FileExists(filename) {
-		return nil, fmt.Errorf(config.ErrFileIssue)
+		fmt.Fprintln(os.Stderr, "ERROR: file does not exist")
+		return nil // Exit the function, indicating an error occurred by returning nil
 	}
 	file, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf(config.ErrFileIssue)
+		fmt.Fprintln(os.Stderr, "ERROR: could not open the file")
+		return nil
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
-	graph := antfarm.NewGraph()
+	graph := stations.NewGraph()
 
 	stationsSectionFound := false
 	connectionsSectionFound := false
@@ -59,33 +60,62 @@ func ReadData(filename string, startStation string, endStation string, numTrains
 		}
 
 		graph.ParseData(line, startStation, endStation, numTrains)
-		graph.ParseAnts(line, numTrains)
+
+		graph.ParseTrains(line, numTrains)
 	}
 
 	if !stationsSectionFound {
-		return nil, fmt.Errorf("NO STATIONS SECTION")
+		fmt.Fprintf(os.Stderr, "ERROR: no stations section\n")
+		return nil
 	}
 	if !connectionsSectionFound {
-		return nil, fmt.Errorf("NO CONNECTION SECTION")
+		fmt.Fprintf(os.Stderr, "ERROR: no connections section\n")
+		return nil
 	}
-	return graph, nil
+	// Validate stations after fully reading the file
+	if _, exists := graph.Stations[startStation]; !exists {
+		fmt.Fprintf(os.Stderr, "ERROR: start station does not exist: %s\n", startStation)
+		return nil
+	}
+	if _, exists := graph.Stations[endStation]; !exists {
+		fmt.Fprintf(os.Stderr, "ERROR: end station does not exist: %s\n", endStation)
+		return nil
+	}
+	return graph
 }
 
 func main() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "ERROR: too few command line arguments \nUsage: go run . <file path> <start station> <end station> <number of trains>\n")
+		return
+	}
+	if len(os.Args) > 5 {
+		fmt.Fprintf(os.Stderr, "ERROR: too many command line arguments \nUsage: go run . <file path> <start station> <end station> <number of trains>\n")
+		return
+	}
 	filePath := os.Args[1]
 	startStation := os.Args[2]
 	endStation := os.Args[3]
-	numTrains, _ := strconv.Atoi(os.Args[4])
-
-	graph, err := ReadData(filePath, startStation, endStation, numTrains)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+	numTrains, err := strconv.Atoi(os.Args[4])
+	if err != nil || numTrains <= 0 {
+		fmt.Fprintf(os.Stderr, "ERROR: Number of trains must be a positive integer and %d is not a positive integer\n", numTrains)
+		return
 	}
+	if startStation == endStation {
+		fmt.Fprintf(os.Stderr, "ERROR: start and end stations are the exact same: %s-%s\n", startStation, endStation)
+		return
+	}
+
+	graph := ReadData(filePath, startStation, endStation, numTrains)
+	if graph == nil {
+		return
+	}
+
 	allPaths := paths.PathsCompute(graph)
 	if allPaths == nil {
-		fmt.Print(config.ErrNoPaths)
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "ERROR: no path exist between the start and end stations")
+		return
 	}
-	paths.Lemin(allPaths, graph.Nants)
+
+	paths.PrintPaths(allPaths, graph.NumTrains)
 }

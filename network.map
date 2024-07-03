@@ -1,10 +1,15 @@
 stations:
-beginning,0,0
-near,1,0
-far,1,3
-terminus,0,3
+# south stations
+waterloo  , 3 , 1
+victoria,6,7
+
+# north stations
+euston,11,23
+st_pancras,2,7 # international
+
+
 connections:
-beginning-near
-beginning-terminus
-near-far
-terminus-far
+waterloo -victoria
+waterloo- euston  
+st_pancras-euston
+victoria-st_pancras
